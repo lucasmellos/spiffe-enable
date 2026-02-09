@@ -173,11 +173,20 @@ func (a *spiffeEnableWebhook) Handle(ctx context.Context, req admission.Request)
 					incIntermediateBundle = true
 				}
 
+				// Parse JWT configuration from annotations
+				jwtConfigs := helper.ParseJWTConfigFromAnnotations(pod.Annotations)
+				if len(jwtConfigs) > 0 {
+					logger.Info("Found JWT SVID configuration",
+						"audience", jwtConfigs[0].JWTAudience,
+						"filename", jwtConfigs[0].JWTSVIDFilename)
+				}
+
 				// Generate the spiffe-helper configuration
 				configParams := helper.SPIFFEHelperConfigParams{
 					AgentAddress:              constants.SPIFFEWLSocketPath,
 					CertPath:                  constants.SPIFFEEnableCertDirectory,
 					IncludeIntermediateBundle: incIntermediateBundle,
+					JWTConfigs:                jwtConfigs,
 				}
 
 				spiffeHelper, err := helper.NewSPIFFEHelper(configParams)
@@ -199,14 +208,32 @@ func (a *spiffeEnableWebhook) Handle(ctx context.Context, req admission.Request)
 					pod.Spec.Volumes = append(pod.Spec.Volumes, getCertsVolume())
 				}
 
-				if !workload.InitContainerExists(pod, helper.SPIFFEHelperSidecarContainerName) {
-					logger.Info("Adding spiffe-helper sidecar container", "initContainerName", helper.SPIFFEHelperSidecarContainerName)
-					pod.Spec.InitContainers = append([]corev1.Container{spiffeHelper.GetSidecarContainer()}, pod.Spec.InitContainers...)
-				}
-
+				// Add the init container to write the config
 				if !workload.InitContainerExists(pod, helper.SPIFFEHelperInitContainerName) {
 					logger.Info("Adding init container to inject spiffe-helper config", "initContainerName", helper.SPIFFEHelperInitContainerName)
 					pod.Spec.InitContainers = append([]corev1.Container{spiffeHelper.GetInitContainer()}, pod.Spec.InitContainers...)
+				}
+
+				// Add spiffe-helper as a sidecar container, not an init container
+				if !workload.ContainerExists(pod.Spec.Containers, helper.SPIFFEHelperSidecarContainerName) {
+					logger.Info("Adding spiffe-helper sidecar container", "containerName", helper.SPIFFEHelperSidecarContainerName)
+					pod.Spec.Containers = append(pod.Spec.Containers, spiffeHelper.GetSidecarContainer())
+				}
+
+				// ONLY add cert volume mount to application containers if JWT SVIDs are configured
+				if len(jwtConfigs) > 0 {
+					for i := range pod.Spec.Containers {
+						container := &pod.Spec.Containers[i]
+						// Skip the spiffe-helper sidecar itself
+						if container.Name == helper.SPIFFEHelperSidecarContainerName {
+							continue
+						}
+						if helper.EnsureCertVolumeMount(container, constants.SPIFFEEnableCertDirectory) {
+							logger.Info("Added cert volume mount for JWT access",
+								"containerName", container.Name,
+								"mountPath", constants.SPIFFEEnableCertDirectory)
+						}
+					}
 				}
 			}
 		}

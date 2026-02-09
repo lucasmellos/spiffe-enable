@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2/hclsimple"
@@ -79,6 +80,7 @@ func TestNewSPIFFEHelper(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, helper)
 			require.NotEmpty(t, helper.Config)
+			require.False(t, strings.Contains(helper.Config, "null"), "generated config must not contain `null`: %s", helper.Config)
 
 			// Parse the generated HCL string back into the SPIFFEHelperConfig struct
 			var decodedCfg SPIFFEHelperConfig
