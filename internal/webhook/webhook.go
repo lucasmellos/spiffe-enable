@@ -181,12 +181,20 @@ func (a *spiffeEnableWebhook) Handle(ctx context.Context, req admission.Request)
 						"filename", jwtConfigs[0].JWTSVIDFilename)
 				}
 
+				jwtSVIDFileMode, err := helper.ParseJWTSVIDFileModeFromAnnotations(pod.Annotations)
+				if err != nil {
+					// Keep going with helper's default; we don't want to reject pods for a bad annotation.
+					logger.Error(err, "Invalid JWT SVID file mode annotation; using default")
+					jwtSVIDFileMode = 600
+				}
+
 				// Generate the spiffe-helper configuration
 				configParams := helper.SPIFFEHelperConfigParams{
 					AgentAddress:              constants.SPIFFEWLSocketPath,
 					CertPath:                  constants.SPIFFEEnableCertDirectory,
 					IncludeIntermediateBundle: incIntermediateBundle,
 					JWTConfigs:                jwtConfigs,
+					JWTSVIDFileMode:           jwtSVIDFileMode,
 				}
 
 				spiffeHelper, err := helper.NewSPIFFEHelper(configParams)

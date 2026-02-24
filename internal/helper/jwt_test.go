@@ -20,9 +20,9 @@ func TestParseJWTConfigFromAnnotations(t *testing.T) {
 			},
 			expected: []SPIFFEHelperJWTConfig{
 				{
-					JWTAudience:     "sts.amazonaws.com",
+					JWTAudience:       "sts.amazonaws.com",
 					JWTExtraAudiences: []string{},
-					JWTSVIDFilename: "tokens/token",
+					JWTSVIDFilename:   "tokens/token",
 				},
 			},
 		},
@@ -48,9 +48,9 @@ func TestParseJWTConfigFromAnnotations(t *testing.T) {
 			},
 			expected: []SPIFFEHelperJWTConfig{
 				{
-					JWTAudience:     "sts.amazonaws.com",
+					JWTAudience:       "sts.amazonaws.com",
 					JWTExtraAudiences: []string{},
-					JWTSVIDFilename: "tokens/token",
+					JWTSVIDFilename:   "tokens/token",
 				},
 			},
 		},
@@ -65,6 +65,58 @@ func TestParseJWTConfigFromAnnotations(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ParseJWTConfigFromAnnotations(tt.annotations)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestParseJWTSVIDFileModeFromAnnotations(t *testing.T) {
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		expected    int
+		expectErr   bool
+	}{
+		{
+			name:        "default when missing",
+			annotations: map[string]string{},
+			expected:    600,
+			expectErr:   false,
+		},
+		{
+			name: "custom mode",
+			annotations: map[string]string{
+				"spiffe.io/helper-jwt-svid-file-mode": "644",
+			},
+			expected:  644,
+			expectErr: false,
+		},
+		{
+			name: "reject non-integer",
+			annotations: map[string]string{
+				"spiffe.io/helper-jwt-svid-file-mode": "abc",
+			},
+			expected:  0,
+			expectErr: true,
+		},
+		{
+			name: "reject non-positive",
+			annotations: map[string]string{
+				"spiffe.io/helper-jwt-svid-file-mode": "0",
+			},
+			expected:  0,
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mode, err := ParseJWTSVIDFileModeFromAnnotations(tt.annotations)
+			if tt.expectErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, mode)
 		})
 	}
 }

@@ -1,11 +1,15 @@
 package helper
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
 	constants "github.com/cofide/spiffe-enable/internal/const"
 	corev1 "k8s.io/api/core/v1"
 )
+
+const defaultJWTSVIDFileMode = 600
 
 // ParseJWTConfigFromAnnotations extracts JWT SVID configuration from pod annotations
 func ParseJWTConfigFromAnnotations(annotations map[string]string) []SPIFFEHelperJWTConfig {
@@ -47,6 +51,25 @@ func ParseJWTConfigFromAnnotations(annotations map[string]string) []SPIFFEHelper
 
 	jwtConfigs = append(jwtConfigs, jwtConfig)
 	return jwtConfigs
+}
+
+// ParseJWTSVIDFileModeFromAnnotations extracts a numeric file mode for JWT SVID output.
+//
+// If not set, returns 600 (owner read/write).
+func ParseJWTSVIDFileModeFromAnnotations(annotations map[string]string) (int, error) {
+	raw, ok := annotations[constants.HelperJWTSVIDFileModeAnnotation]
+	if !ok || strings.TrimSpace(raw) == "" {
+		return defaultJWTSVIDFileMode, nil
+	}
+
+	mode, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q: must be an integer (e.g. 600)", constants.HelperJWTSVIDFileModeAnnotation, raw)
+	}
+	if mode <= 0 {
+		return 0, fmt.Errorf("invalid %s %q: must be a positive integer (e.g. 600)", constants.HelperJWTSVIDFileModeAnnotation, raw)
+	}
+	return mode, nil
 }
 
 // EnsureCertVolumeMount adds the cert directory volume mount to the container

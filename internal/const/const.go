@@ -8,6 +8,7 @@ const (
 	HelperJWTAudienceAnnotation       = "spiffe.io/helper-jwt-audience"
 	HelperJWTFilenameAnnotation       = "spiffe.io/helper-jwt-filename"
 	HelperJWTExtraAudiencesAnnotation = "spiffe.io/helper-jwt-extra-audiences"
+	HelperJWTSVIDFileModeAnnotation   = "spiffe.io/helper-jwt-svid-file-mode"
 )
 
 // Components that can be injected

@@ -81,11 +81,17 @@ type SPIFFEHelperConfigParams struct {
 	CertPath                  string
 	IncludeIntermediateBundle bool
 	JWTConfigs                []SPIFFEHelperJWTConfig
+	JWTSVIDFileMode           int
 }
 
 func NewSPIFFEHelper(params SPIFFEHelperConfigParams) (*SPIFFEHelper, error) {
 	if params.AgentAddress == "" || params.CertPath == "" {
 		return nil, fmt.Errorf("missing spiffe-helper configuration parameters")
+	}
+
+	jwtSVIDFileMode := params.JWTSVIDFileMode
+	if jwtSVIDFileMode == 0 {
+		jwtSVIDFileMode = defaultJWTSVIDFileMode
 	}
 
 	spiffeHelperCfg := &SPIFFEHelperConfig{
@@ -97,6 +103,7 @@ func NewSPIFFEHelper(params SPIFFEHelperConfigParams) (*SPIFFEHelper, error) {
 		SVIDFilename:             "tls.crt",
 		SVIDKeyFilename:          "tls.key",
 		SVIDBundleFilename:       "ca.pem",
+		JWTSVIDFileMode:          jwtSVIDFileMode,
 		HealthCheck: SPIFFEHelperHealthConfig{
 			ListenerEnabled: true,
 			BindPort:        SPIFFEHelperHealthCheckPort,
