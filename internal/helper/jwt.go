@@ -31,7 +31,8 @@ func ParseJWTConfigFromAnnotations(annotations map[string]string) []SPIFFEHelper
 	jwtConfig := SPIFFEHelperJWTConfig{
 		JWTAudience:     audience,
 		JWTSVIDFilename: filename,
-		// Important: keep this non-nil so HCL encoding emits `[]` not `null`.
+		// Keep this non-nil so empty values are consistently treated as an empty list
+		// (and so future encoding paths don't accidentally emit `null`).
 		JWTExtraAudiences: []string{},
 	}
 

@@ -84,6 +84,24 @@ type SPIFFEHelperConfigParams struct {
 	JWTSVIDFileMode           int
 }
 
+func jwtSVIDConfigToCtyValue(jwtConfig SPIFFEHelperJWTConfig) cty.Value {
+	objMap := map[string]cty.Value{
+		"jwt_audience":       cty.StringVal(jwtConfig.JWTAudience),
+		"jwt_svid_file_name": cty.StringVal(jwtConfig.JWTSVIDFilename),
+	}
+
+	// Only add jwt_extra_audiences if it has values (to avoid `null` in generated HCL).
+	if len(jwtConfig.JWTExtraAudiences) > 0 {
+		extraAuds := make([]cty.Value, len(jwtConfig.JWTExtraAudiences))
+		for j, aud := range jwtConfig.JWTExtraAudiences {
+			extraAuds[j] = cty.StringVal(aud)
+		}
+		objMap["jwt_extra_audiences"] = cty.ListVal(extraAuds)
+	}
+
+	return cty.ObjectVal(objMap)
+}
+
 func NewSPIFFEHelper(params SPIFFEHelperConfigParams) (*SPIFFEHelper, error) {
 	if params.AgentAddress == "" || params.CertPath == "" {
 		return nil, fmt.Errorf("missing spiffe-helper configuration parameters")
@@ -123,21 +141,7 @@ func NewSPIFFEHelper(params SPIFFEHelperConfigParams) (*SPIFFEHelper, error) {
 		// Build a list of JWT SVID objects
 		jwtObjects := make([]cty.Value, len(params.JWTConfigs))
 		for i, jwtConfig := range params.JWTConfigs {
-			objMap := map[string]cty.Value{
-				"jwt_audience":       cty.StringVal(jwtConfig.JWTAudience),
-				"jwt_svid_file_name": cty.StringVal(jwtConfig.JWTSVIDFilename),
-			}
-
-			// Only add jwt_extra_audiences if it has values
-			if len(jwtConfig.JWTExtraAudiences) > 0 {
-				extraAuds := make([]cty.Value, len(jwtConfig.JWTExtraAudiences))
-				for j, aud := range jwtConfig.JWTExtraAudiences {
-					extraAuds[j] = cty.StringVal(aud)
-				}
-				objMap["jwt_extra_audiences"] = cty.ListVal(extraAuds)
-			}
-
-			jwtObjects[i] = cty.ObjectVal(objMap)
+			jwtObjects[i] = jwtSVIDConfigToCtyValue(jwtConfig)
 		}
 
 		// Set jwt_svids as a list attribute
