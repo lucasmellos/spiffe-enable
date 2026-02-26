@@ -1,6 +1,6 @@
 module github.com/cofide/spiffe-enable
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/evanphx/json-patch v5.9.11+incompatible
@@ -10,6 +10,7 @@ require (
 	github.com/onsi/gomega v1.39.1
 	github.com/spiffe/go-spiffe/v2 v2.6.0
 	github.com/stretchr/testify v1.11.1
+	github.com/zclconf/go-cty v1.16.3
 	k8s.io/api v0.35.1
 	k8s.io/apimachinery v0.35.1
 	k8s.io/client-go v0.35.1
@@ -65,7 +66,6 @@ require (
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	github.com/zclconf/go-cty v1.16.3 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0 // indirect
 	go.opentelemetry.io/otel v1.37.0 // indirect
