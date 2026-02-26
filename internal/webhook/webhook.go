@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	constants "github.com/cofide/spiffe-enable/internal/const"
@@ -173,11 +174,24 @@ func (a *spiffeEnableWebhook) Handle(ctx context.Context, req admission.Request)
 					incIntermediateBundle = true
 				}
 
+				// Resolve optional health-check port override
+				healthCheckPort := 0
+				if portStr, ok := pod.Annotations[constants.SPIFFEHelperHealthPortAnnotation]; ok {
+					if p, err := strconv.Atoi(portStr); err != nil || p <= 0 || p > 65535 {
+						logger.Error(fmt.Errorf("invalid annotation value %q", portStr),
+							"Ignoring invalid helper-health-port annotation, using default",
+							"annotation", constants.SPIFFEHelperHealthPortAnnotation)
+					} else {
+						healthCheckPort = p
+					}
+				}
+
 				// Generate the spiffe-helper configuration
 				configParams := helper.SPIFFEHelperConfigParams{
 					AgentAddress:              constants.SPIFFEWLSocketPath,
 					CertPath:                  constants.SPIFFEEnableCertDirectory,
 					IncludeIntermediateBundle: incIntermediateBundle,
+					HealthCheckPort:           healthCheckPort,
 				}
 
 				spiffeHelper, err := helper.NewSPIFFEHelper(configParams)
