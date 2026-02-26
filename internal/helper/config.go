@@ -7,8 +7,10 @@ import (
 	constants "github.com/cofide/spiffe-enable/internal/const"
 	"github.com/cofide/spiffe-enable/internal/workload"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/zclconf/go-cty/cty"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 
 	"github.com/hashicorp/hcl/v2/gohcl"
 )
@@ -16,7 +18,7 @@ import (
 // Images
 var (
 	SPIFFEHelperImage = "ghcr.io/spiffe/spiffe-helper:0.10.1"
-	InitHelperImage   = "ghcr.io/cofide/spiffe-enable-init:v0.3.0"
+	InitHelperImage   = "ghcr.io/cofide/spiffe-enable-init:v0.5.2"
 )
 
 // Constants
@@ -58,13 +60,12 @@ type SPIFFEHelperConfig struct {
 	SVIDBundleFilename string `hcl:"svid_bundle_file_name"`
 
 	// JWT configuration
-	JWTSVIDs          []SPIFFEHelperJWTConfig `hcl:"jwt_svids,block"`
-	JWTBundleFilename string                  `hcl:"jwt_bundle_file_name"`
+	JWTBundleFilename string `hcl:"jwt_bundle_file_name"`
 }
 
 type SPIFFEHelperJWTConfig struct {
 	JWTAudience       string   `hcl:"jwt_audience"`
-	JWTExtraAudiences []string `hcl:"jwt_extra_audiences"`
+	JWTExtraAudiences []string `hcl:"jwt_extra_audiences,optional"`
 	JWTSVIDFilename   string   `hcl:"jwt_svid_file_name"`
 }
 
@@ -79,9 +80,30 @@ type SPIFFEHelperConfigParams struct {
 	AgentAddress              string
 	CertPath                  string
 	IncludeIntermediateBundle bool
+	JWTConfigs                []SPIFFEHelperJWTConfig
+	JWTSVIDFileMode           int
+
 	// HealthCheckPort overrides the port spiffe-helper listens on for health
 	// checks.  Defaults to SPIFFEHelperHealthCheckPort (8081) when zero.
 	HealthCheckPort int
+}
+
+func jwtSVIDConfigToCtyValue(jwtConfig SPIFFEHelperJWTConfig) cty.Value {
+	objMap := map[string]cty.Value{
+		"jwt_audience":       cty.StringVal(jwtConfig.JWTAudience),
+		"jwt_svid_file_name": cty.StringVal(jwtConfig.JWTSVIDFilename),
+	}
+
+	// Only add jwt_extra_audiences if it has values (to avoid `null` in generated HCL).
+	if len(jwtConfig.JWTExtraAudiences) > 0 {
+		extraAuds := make([]cty.Value, len(jwtConfig.JWTExtraAudiences))
+		for j, aud := range jwtConfig.JWTExtraAudiences {
+			extraAuds[j] = cty.StringVal(aud)
+		}
+		objMap["jwt_extra_audiences"] = cty.ListVal(extraAuds)
+	}
+
+	return cty.ObjectVal(objMap)
 }
 
 func NewSPIFFEHelper(params SPIFFEHelperConfigParams) (*SPIFFEHelper, error) {
@@ -94,6 +116,11 @@ func NewSPIFFEHelper(params SPIFFEHelperConfigParams) (*SPIFFEHelper, error) {
 		healthCheckPort = SPIFFEHelperHealthCheckPort
 	}
 
+	jwtSVIDFileMode := params.JWTSVIDFileMode
+	if jwtSVIDFileMode == 0 {
+		jwtSVIDFileMode = defaultJWTSVIDFileMode
+	}
+
 	spiffeHelperCfg := &SPIFFEHelperConfig{
 		CertDir:                  params.CertPath,
 		DaemonMode:               BoolPtr(true),
@@ -103,15 +130,33 @@ func NewSPIFFEHelper(params SPIFFEHelperConfigParams) (*SPIFFEHelper, error) {
 		SVIDFilename:             "tls.crt",
 		SVIDKeyFilename:          "tls.key",
 		SVIDBundleFilename:       "ca.pem",
+		JWTSVIDFileMode:          jwtSVIDFileMode,
 		HealthCheck: SPIFFEHelperHealthConfig{
 			ListenerEnabled: true,
 			BindPort:        healthCheckPort,
+			LivenessPath:    SPIFFEHelperHealthCheckLivenessPath,
+			ReadinessPath:   SPIFFEHelperHealthCheckReadinessPath,
 		},
 	}
 
-	// Marshal to an HCL-formatted string
+	// Marshal base config to HCL
 	hclFile := hclwrite.NewEmptyFile()
 	gohcl.EncodeIntoBody(spiffeHelperCfg, hclFile.Body())
+
+	// Only add JWT SVIDs configuration if present
+	if len(params.JWTConfigs) > 0 {
+		body := hclFile.Body()
+
+		// Build a list of JWT SVID objects
+		jwtObjects := make([]cty.Value, len(params.JWTConfigs))
+		for i, jwtConfig := range params.JWTConfigs {
+			jwtObjects[i] = jwtSVIDConfigToCtyValue(jwtConfig)
+		}
+
+		// Set jwt_svids as a list attribute
+		body.SetAttributeValue("jwt_svids", cty.ListVal(jwtObjects))
+	}
+
 	hclBytes := hclFile.Bytes()
 	hclString := string(hclBytes)
 
@@ -210,6 +255,16 @@ func (h *SPIFFEHelper) GetInitContainer() corev1.Container {
 			Name:  SPIFFEHelperConfigContentEnvVar,
 			Value: h.Config,
 		}},
+		// Some workloads enforce `runAsNonRoot: true` at the Pod level (e.g. cert-manager).
+		// Ensure our init container complies; it only writes into EmptyDir volumes and does not need root.
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			RunAsUser:                ptr.To(int64(65532)),
+			RunAsGroup:               ptr.To(int64(65532)),
+			RunAsNonRoot:             ptr.To(true),
+			Privileged:               ptr.To(false),
+			Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"all"}},
+		},
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name: SPIFFEHelperConfigVolumeName, MountPath: filepath.Dir(configFilePath),
